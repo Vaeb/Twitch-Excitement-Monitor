@@ -4,6 +4,8 @@ import glob from 'glob';
 import './twitchSetup';
 import { log } from './utilsSetup';
 
+log('| Setting up commands...');
+
 export interface CommandFuncParams {
     channel: string;
     user: string;
@@ -53,3 +55,5 @@ await Promise.all(glob.sync('./dist/events/commands/**/*.js').map(async (file) =
 
     log('Added command:', newCommand.name);
 }));
+
+log('Commands ready!');

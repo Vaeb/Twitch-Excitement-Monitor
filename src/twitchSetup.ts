@@ -4,7 +4,7 @@ import { ChatClient } from 'twitch-chat-client';
 
 import { log } from './utilsSetup';
 
-log('Setting up twitch client...');
+log('| Setting up twitch client...');
 
 interface AuthData {
     clientId: string;
