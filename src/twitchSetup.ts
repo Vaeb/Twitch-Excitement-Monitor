@@ -6,6 +6,8 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
+export const channels = ['vaeben', 'xqcow'];
+
 interface AuthData {
     clientId: string;
     clientId2: string;
@@ -38,7 +40,7 @@ const auth = new RefreshableAuthProvider(
     }
 );
 
-export const chatClient = new ChatClient(auth, { channels: ['vaeben'] });
+export const chatClient = new ChatClient(auth, { channels });
 await chatClient.connect();
 
 log('Twitch client connected!');
