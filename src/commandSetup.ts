@@ -2,6 +2,7 @@ import path from 'path';
 import glob from 'glob';
 
 import './twitchSetup';
+import { log } from './utilsSetup';
 
 export interface CommandFuncParams {
     channel: string;
@@ -32,12 +33,12 @@ const prefix = '';
 await Promise.all(glob.sync('./dist/events/commands/**/*.js').map(async (file) => {
     const filePath = `./${path.relative('./dist', file)}`.replace(/\\/g, '/');
 
-    console.log('Importing:', filePath);
+    log('Importing:', filePath);
 
     const { command }: { command: CommandRaw } = await import(filePath);
 
     if (!command) {
-        console.log('Command data not found:', file);
+        log('Command data not found:', file);
         return;
     }
 
@@ -50,5 +51,5 @@ await Promise.all(glob.sync('./dist/events/commands/**/*.js').map(async (file) =
 
     commands.push(newCommand);
 
-    console.log('Added command:', newCommand.name);
+    log('Added command:', newCommand.name);
 }));

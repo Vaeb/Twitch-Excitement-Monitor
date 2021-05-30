@@ -2,7 +2,9 @@ import { promises as fs } from 'fs';
 import { RefreshableAuthProvider, StaticAuthProvider } from 'twitch-auth';
 import { ChatClient } from 'twitch-chat-client';
 
-console.log('Setting up twitch client...');
+import { log } from './utilsSetup';
+
+log('Setting up twitch client...');
 
 interface AuthData {
     clientId: string;
@@ -30,7 +32,7 @@ const auth = new RefreshableAuthProvider(
                 expiryTimestamp: expiryDate ? expiryDate.getTime() : null,
             };
 
-            console.log('>>> Refreshing to:', accessToken, refreshToken, expiryDate);
+            log('>>> Refreshing to:', accessToken, refreshToken, expiryDate);
             await fs.writeFile('./src/auth.json', JSON.stringify(authDataNew, null, 4), 'utf-8');
         },
     }
@@ -39,4 +41,4 @@ const auth = new RefreshableAuthProvider(
 export const chatClient = new ChatClient(auth, { channels: ['vaeben'] });
 await chatClient.connect();
 
-console.log('Twitch client connected!');
+log('Twitch client connected!');

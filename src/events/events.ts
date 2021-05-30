@@ -21,4 +21,4 @@ chatClient.onMessage((channel, user, message) => {
     });
 });
 
-console.log('Events ready!');
+log('Events ready!');

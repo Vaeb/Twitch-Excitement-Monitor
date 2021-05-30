@@ -1,5 +1,6 @@
 import './twitchSetup';
 import './commandSetup';
 import './events/events';
+import { log } from './utils';
 
-console.log('Twitch-Hype-Monitor ready!');
+log('Twitch-Hype-Monitor ready!');
