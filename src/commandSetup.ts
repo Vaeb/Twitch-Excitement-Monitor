@@ -7,7 +7,7 @@ import { log } from './utilsSetup';
 log('| Setting up commands...');
 
 export interface CommandFuncParams {
-    channel: string;
+    channelName: string;
     user: string;
     rawMessage: string;
     cmdArgs: string[];

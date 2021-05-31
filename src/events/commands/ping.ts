@@ -5,8 +5,8 @@ export const command: CommandRaw = {
     cmds: ['ping'],
     desc: 'Check the application status',
     params: [],
-    func: async ({ channel }) => {
-        chat(channel, 'LUL');
+    func: async ({ channelName }) => {
+        chat(channelName, 'LUL');
         log('Pinged!');
     },
 };

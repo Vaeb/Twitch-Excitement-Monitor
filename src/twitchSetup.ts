@@ -6,7 +6,7 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
-export const channels = ['vaeben', 'harry'];
+export const channelNames = ['vaeben', 'kiva', 'anthonyz'] as const;
 
 interface AuthData {
     clientId: string;
@@ -15,11 +15,12 @@ interface AuthData {
     accessToken: string;
     expiryTimestamp: number;
     refreshToken: string;
+    webhook: string;
 }
 
 const fetchAuth = async (): Promise<AuthData> => JSON.parse(String(await fs.readFile('./src/auth.json', 'utf-8')));
 
-const authData = await fetchAuth();
+export const authData = await fetchAuth();
 const auth = new RefreshableAuthProvider(
     new StaticAuthProvider(authData.clientId, authData.accessToken),
     {
@@ -40,7 +41,7 @@ const auth = new RefreshableAuthProvider(
     }
 );
 
-export const chatClient = new ChatClient(auth, { channels });
+export const chatClient = new ChatClient(auth, { channels: [...channelNames] });
 await chatClient.connect();
 
 log('Twitch client connected!');
