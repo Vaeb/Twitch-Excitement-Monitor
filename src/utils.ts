@@ -5,6 +5,8 @@ import { log } from './utilsSetup';
 
 export * from './utilsSetup';
 
+export const hiddenSpace = '︀';
+
 export const round = (num: number, inc: number): number => (inc == 0 ? num : Math.floor(num / inc + 0.5) * inc);
 
 export const toFixedCut = (num: number, decimals: number): string => Number(num.toFixed(decimals)).toString();

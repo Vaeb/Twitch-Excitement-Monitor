@@ -2,7 +2,7 @@ import axios from 'axios';
 
 import { authData, channelNames } from './twitchSetup';
 import { commands } from './commandSetup';
-import { log, formatTime, getDateString } from './utils';
+import { log, formatTime, getDateString, hiddenSpace } from './utils';
 
 interface RecentMessage {
     timestamp: number;
@@ -21,13 +21,17 @@ interface Activity {
 
 const windowSeconds = 10; // 30 | Larger = Scenario | Smaller = Moment/Event
 const waitForDataSeconds = 90; // 1 day
-const hypePercent = 0.8; // 0.9
+const hypePercent = 0.9; // 0.9
 const intervalFreq = 1000 * 2; // 2
 const windowMs = 1000 * windowSeconds;
 const waitForDataWindow = 1000 * waitForDataSeconds;
 
+const maxChannelNameLen = channelNames.reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
+
 export default class Channel {
     channelName: string;
+
+    channelNamePadded: string;
 
     // private lastMessageLower = '';
 
@@ -43,10 +47,11 @@ export default class Channel {
 
     constructor(channelName: string) {
         this.channelName = channelName;
+        this.channelNamePadded = channelName.padEnd(maxChannelNameLen, ' ');
         this.monitorHype();
     }
 
-    public onNewMessage(channelIrc: string, user: string, message: string, channelName: string): void {
+    public onNewMessage(channelIrc: string, user: string, message: string): void {
         const messageLower = message.toLowerCase().trim();
 
         // this.lastMessageLower = messageLower;
@@ -65,7 +70,7 @@ export default class Channel {
         log(user, 'sent command', `'${command.name}'`, 'in', `'${channelIrc}'`, ...(messageArgs.length ? ['with args', messageArgs] : []), `('${message}')`);
 
         command.func({
-            channelName,
+            channelName: this.channelName,
             user,
             rawMessage: message,
             cmdArgs: messageArgs,
@@ -134,7 +139,7 @@ export default class Channel {
                     if (canCheckHypeData === false) {
                         canCheckHypeData = +new Date() - this.startTick > waitForDataWindow;
                         if (canCheckHypeData === true) {
-                            log('Channel:', this.channelName, '| Now checking for hype!');
+                            log('Channel:', this.channelNamePadded, '| Now checking for hype!');
                         }
                     }
                     if (canCheckHypeData) {
@@ -145,9 +150,8 @@ export default class Channel {
                             this.hypeActive = true;
                             this.activityData.hypeStart = +new Date();
                             const outStrFields = [
-                                '**Hype Detected**',
+                                `${hiddenSpace}\n**Hype Detected-${this.channelNamePadded}**`,
                                 '<@107593015014486016>',
-                                `Channel: ${this.channelName}`,
                                 `Time: ${getDateString(new Date(cutoffStamp))}`,
                                 `Current hype threshold: ${hypeThreshold.toFixed(2)})!`,
                             ];
@@ -169,16 +173,15 @@ export default class Channel {
                             }, 0) / hypeActivities.length;
                             const elapsedTimeStr = formatTime(+new Date() - hypeStart);
                             const outStrFields = [
-                                '......Hype Ended',
+                                `......Hype Ended-${this.channelNamePadded}`,
                                 '<@107593015014486016>',
-                                `Channel: ${this.channelName}`,
                                 `Lasted: ${elapsedTimeStr}`,
                                 `Min-Hype: ${minHype.toFixed(2)}`,
                                 `Avg-Hype: ${avgHype.toFixed(2)}`,
                                 `Max-Hype: ${maxHype.toFixed(2)}`,
                             ];
                             const outStr = outStrFields.join(' | ');
-                            log(outStr);
+                            log(`${hiddenSpace}\n${outStr}`);
                             axios.post(authData.webhook, {
                                 content: outStr,
                             }).catch(err => log(err));
@@ -193,7 +196,7 @@ export default class Channel {
 
             if (activityNum > 0) {
                 log(
-                    'Channel:', this.channelName,
+                    'Channel:', this.channelNamePadded,
                     '| n:', this.activityData.n,
                     '| Activity:', activityNum.toFixed(2),
                     '| Hype:', this.hypeActive,

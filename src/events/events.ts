@@ -7,7 +7,7 @@ log('| Setting up events...');
 
 chatClient.onMessage((channelIrc, user, message) => {
     const channelName = channelIrc.substring(1) as ChannelName;
-    channels[channelName].onNewMessage(channelIrc, user, message, channelName);
+    channels[channelName].onNewMessage(channelIrc, user, message);
 });
 
 // Check for sub-mode + emote-mode + slow-mode + follower-x-mode
