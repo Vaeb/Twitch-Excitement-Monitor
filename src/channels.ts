@@ -28,8 +28,12 @@ const waitForDataWindow = 1000 * waitForDataSeconds;
 
 const maxChannelNameLen = channelNames.reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
 
+const formatDecimal = (num: number | null, fractionDigits = 2, maxLength = 5) => num?.toFixed(fractionDigits).padStart(maxLength, '0');
+
 export default class Channel {
     channelName: string;
+
+    channelNumber: number;
 
     channelNamePadded: string;
 
@@ -45,8 +49,9 @@ export default class Channel {
 
     hypeActive = false;
 
-    constructor(channelName: string) {
+    constructor(channelName: string, channelNumber: number) {
         this.channelName = channelName;
+        this.channelNumber = channelNumber;
         this.channelNamePadded = channelName.padEnd(maxChannelNameLen, ' ');
         this.monitorHype();
     }
@@ -139,7 +144,7 @@ export default class Channel {
                     if (canCheckHypeData === false) {
                         canCheckHypeData = +new Date() - this.startTick > waitForDataWindow;
                         if (canCheckHypeData === true) {
-                            log('Channel:', this.channelNamePadded, '| Now checking for hype!');
+                            log(`Channel${this.channelNumber}:`, this.channelNamePadded, '| Now checking for hype!');
                         }
                     }
                     if (canCheckHypeData) {
@@ -151,9 +156,9 @@ export default class Channel {
                             this.activityData.hypeStart = +new Date();
                             const outStrFields = [
                                 `${hiddenSpace}\n**Hype Detected-${this.channelNamePadded}**`,
-                                '<@107593015014486016>',
                                 `Time: ${getDateString(new Date(cutoffStamp))}`,
-                                `Current hype threshold: ${hypeThreshold.toFixed(2)})!`,
+                                `Current hype threshold: ${formatDecimal(hypeThreshold)})!`,
+                                '<@107593015014486016>',
                             ];
                             const outStr = outStrFields.join(' | ');
                             log(outStr);
@@ -174,11 +179,11 @@ export default class Channel {
                             const elapsedTimeStr = formatTime(+new Date() - hypeStart);
                             const outStrFields = [
                                 `......Hype Ended-${this.channelNamePadded}`,
-                                '<@107593015014486016>',
                                 `Lasted: ${elapsedTimeStr}`,
-                                `Min-Hype: ${minHype.toFixed(2)}`,
-                                `Avg-Hype: ${avgHype.toFixed(2)}`,
-                                `Max-Hype: ${maxHype.toFixed(2)}`,
+                                `Min-Hype: ${formatDecimal(minHype)}`,
+                                `Avg-Hype: ${formatDecimal(avgHype)}`,
+                                `Max-Hype: ${formatDecimal(maxHype)}`,
+                                '<@107593015014486016>',
                             ];
                             const outStr = outStrFields.join(' | ');
                             log(`${hiddenSpace}\n${outStr}`);
@@ -196,14 +201,14 @@ export default class Channel {
 
             if (activityNum > 0) {
                 log(
-                    'Channel:', this.channelNamePadded,
-                    '| n:', this.activityData.n,
-                    '| Activity:', activityNum.toFixed(2),
-                    '| Hype:', this.hypeActive,
-                    '| Hype-Threshold:', hypeThreshold?.toFixed(2),
-                    '| Min:', this.activityData.min.toFixed(2),
-                    '| Avg:', this.activityData.avg.toFixed(2),
-                    '| Peak:', this.activityData.peak.toFixed(2)
+                    `Channel${this.channelNumber}:`, this.channelNamePadded,
+                    `| n${this.channelNumber}:`, String(this.activityData.n).padStart(9, '0'),
+                    `| Activity${this.channelNumber}:`, formatDecimal(activityNum),
+                    `| Hype${this.channelNumber}:`, this.hypeActive,
+                    `| Hype-Threshold${this.channelNumber}:`, formatDecimal(hypeThreshold),
+                    `| Min${this.channelNumber}:`, formatDecimal(this.activityData.min),
+                    `| Avg${this.channelNumber}:`, formatDecimal(this.activityData.avg),
+                    `| Peak${this.channelNumber}:`, formatDecimal(this.activityData.peak)
                 );
             }
         }, intervalFreq);
@@ -216,7 +221,8 @@ export type ChannelName = (typeof channelNames)[number];
 
 export const channels = {} as { [key in ChannelName]: Channel };
 
-for (const channelName of channelNames) {
-    const channel = new Channel(channelName);
+for (let i = 0; i < channelNames.length; i++) {
+    const channelName = channelNames[i];
+    const channel = new Channel(channelName, i + 1);
     channels[channelName] = channel;
 }
