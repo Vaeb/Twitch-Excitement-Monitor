@@ -6,7 +6,7 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
-export const channelNames = ['uhsnow', 'vaeben'] as const;
+export const channelNames = ['buddha', 'vaeben'] as const;
 
 interface AuthData {
     clientId: string;
@@ -15,7 +15,7 @@ interface AuthData {
     accessToken: string;
     expiryTimestamp: number;
     refreshToken: string;
-    webhook: string;
+    webhook: string; //
 }
 
 const fetchAuth = async (): Promise<AuthData> => JSON.parse(String(await fs.readFile('./src/auth.json', 'utf-8')));

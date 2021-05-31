@@ -1,5 +1,6 @@
 import axios from 'axios';
 
+import './models';
 import { authData } from './twitchSetup';
 import './commandSetup';
 import './events/events';

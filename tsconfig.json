@@ -28,7 +28,8 @@
         "target": "es2020"
     },
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "./src/events/commands/eval2.ts"
     ],
     "include": [
         ".eslintrc.cjs",

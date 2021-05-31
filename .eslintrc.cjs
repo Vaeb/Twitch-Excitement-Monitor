@@ -54,6 +54,7 @@ module.exports = {
             { code: 186, tabWidth: 4, ignoreComments: true },
         ],
         'no-async-promise-executor': 'off',
+        'no-await-in-loop': 'off',
         // 'no-bitwise': 'off',
         'no-cond-assign': 'off',
         'no-console': 'off',
@@ -73,11 +74,11 @@ module.exports = {
         'no-prototype-builtins': 'off',
         'no-restricted-syntax': 'off',
         'no-underscore-dangle': 'off',
-        '@typescript-eslint/no-unused-vars': [
-            'warn',
-            { vars: 'all', args: 'after-used', ignoreRestSiblings: true },
-        ],
-        // '@typescript-eslint/no-unused-vars': 'off',
+        // '@typescript-eslint/no-unused-vars': [
+        //     'warn',
+        //     { vars: 'all', args: 'after-used', ignoreRestSiblings: true },
+        // ],
+        '@typescript-eslint/no-unused-vars': 'off',
         'object-curly-newline': [
             'warn',
             { minProperties: 5, multiline: true, consistent: true },
