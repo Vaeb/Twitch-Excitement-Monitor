@@ -19,9 +19,9 @@ interface Activity {
     hypeStart: number;
 }
 
-const windowSeconds = 10; // 30 | Larger = Scenario | Smaller = Moment/Event
+const windowSeconds = 30; // 30 | Larger = Scenario | Smaller = Moment/Event
 const waitForDataSeconds = 60 * 10; // 1 day
-const hypePercent = 0.9; // 0.9
+const hypePercent = 0.995; // 0.9
 const intervalFreq = 1000 * 2; // 2
 const windowMs = 1000 * windowSeconds;
 const waitForDataWindow = 1000 * waitForDataSeconds;

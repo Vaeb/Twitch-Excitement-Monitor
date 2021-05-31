@@ -2,7 +2,9 @@ import path from 'path';
 import glob from 'glob';
 
 import './twitchSetup';
-import { log } from './utilsSetup';
+import { log, forwardSlashes, getDirName } from './utilsSetup';
+
+const { __dirname } = getDirName(import.meta);
 
 log('| Setting up commands...');
 
@@ -32,8 +34,8 @@ export interface Command {
 export const commands: Command[] = [];
 const prefix = '';
 
-await Promise.all(glob.sync('./dist/events/commands/**/*.js').map(async (file) => {
-    const filePath = `./${path.relative('./dist', file)}`.replace(/\\/g, '/');
+await Promise.all(glob.sync(`${__dirname}/events/commands/**/*.js`).map(async (file) => {
+    const filePath = forwardSlashes(`./${path.relative(__dirname, file)}`);
 
     log('Importing:', filePath);
 
