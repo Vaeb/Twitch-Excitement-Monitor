@@ -155,15 +155,14 @@ export default class Channel {
                             this.hypeActive = true;
                             this.activityData.hypeStart = +new Date();
                             const outStrFields = [
-                                `${hiddenSpace}\n**Hype Detected-${this.channelNamePadded}**`,
+                                `Hype Detected-${this.channelNamePadded}   `,
                                 `Time: ${getDateString(new Date(cutoffStamp))}`,
                                 `Current hype threshold: ${formatDecimal(hypeThreshold)})!`,
-                                '<@107593015014486016>',
                             ];
                             const outStr = outStrFields.join(' | ');
                             log(outStr);
                             axios.post(authData.webhook, {
-                                content: outStr,
+                                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\``,
                             }).catch(err => log(err));
                         } else if (this.hypeActive && !isHype) {
                             this.hypeActive = false;
@@ -183,12 +182,11 @@ export default class Channel {
                                 `Min-Hype: ${formatDecimal(minHype)}`,
                                 `Avg-Hype: ${formatDecimal(avgHype)}`,
                                 `Max-Hype: ${formatDecimal(maxHype)}`,
-                                '<@107593015014486016>',
                             ];
                             const outStr = outStrFields.join(' | ');
                             log(`${hiddenSpace}\n${outStr}`);
                             axios.post(authData.webhook, {
-                                content: outStr,
+                                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\``,
                             }).catch(err => log(err));
                         }
 
