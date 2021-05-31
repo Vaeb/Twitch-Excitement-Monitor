@@ -6,7 +6,7 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
-export const channelNames = ['anthonyz', 'kiva', 'vaeben'] as const;
+export const channelNames = ['anthonyz', 'penta', 'kiva', 'vaeben'] as const;
 
 interface AuthData {
     clientId: string;
