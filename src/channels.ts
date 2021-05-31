@@ -157,10 +157,10 @@ export default class Channel {
                             const outStrFields = [
                                 `Hype Detected-${this.channelNamePadded}   `,
                                 `Time: ${getDateString(new Date(cutoffStamp))}`,
-                                `Current hype threshold: ${formatDecimal(hypeThreshold)})!`,
+                                `Current hype threshold: ${formatDecimal(hypeThreshold)}!`,
                             ];
                             const outStr = outStrFields.join(' | ');
-                            log(outStr);
+                            log(`${hiddenSpace}\n${outStr}`);
                             axios.post(authData.webhook, {
                                 content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\``,
                             }).catch(err => log(err));
