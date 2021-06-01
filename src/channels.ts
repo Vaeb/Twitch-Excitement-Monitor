@@ -73,8 +73,6 @@ export default class Channel {
 
     canStore = false;
 
-    canSave = false;
-
     constructor(channelName: string, channelNumber: number, helixChannel: HelixUser, streamLive: boolean) {
         this.channelName = channelName;
         this.channelNumber = channelNumber;
@@ -114,7 +112,6 @@ export default class Channel {
         this.activityData.sortedActivities = [];
         this.recentMessages = [];
         this.startTick = Infinity;
-        this.canSave = false;
         this.canStore = false;
     }
 
@@ -257,23 +254,28 @@ export default class Channel {
 
         if (hypeThresholdDoc) {
             this.hypeThreshold = hypeThresholdDoc.activity;
-            log(`Hype threshold for ${hypePercent} found:`, this.hypeThreshold);
+            log(`[${this.channelName}] Hype threshold for ${hypePercent} found:`, this.hypeThreshold);
             return this.hypeThreshold;
         }
 
         this.hypeThreshold = null;
-        log(`No hype threshold stored for percentile ${hypePercent}`);
+        log(`[${this.channelName}] No hype threshold stored for percentile ${hypePercent}`);
         return null;
     }
 
-    private async saveHypeData() {
+    public async saveHypeData(): Promise<void> {
         log('>>> Storing hype data...');
+
+        if (this.activityData.sortedActivities.length < 1000) return;
 
         const sortedActivities = [...this.activityData.sortedActivities];
 
         this.streamLive = !!(await isChannelLive(this.channelName));
 
-        if (this.streamLive === false) return;
+        if (this.streamLive === false) {
+            this.resetMonitorData();
+            return;
+        }
 
         const keyPercents: number[] = [];
         for (let x = 0; x < 8; x++) keyPercents.push(x / 1e1);
@@ -328,9 +330,9 @@ export default class Channel {
         setInterval(() => {
             if (this.streamLive === false) return;
 
-            if (this.canStore === false) this.canStore = +new Date() - this.startTick >= windowMs;
+            const nowStamp = +new Date();
 
-            if (this.canSave === false) this.canSave = +new Date() - this.liveStatusChangedStamp >= saveAfterUptime;
+            if (this.canStore === false) this.canStore = nowStamp - this.startTick >= windowMs && nowStamp - this.liveStatusChangedStamp >= saveAfterUptime;
 
             let activityNum = 0;
             let recentMessagesNow = [];
@@ -339,7 +341,7 @@ export default class Channel {
             if (this.recentMessages.length > 0) {
                 // const messagePointerNow = ++messagePointer;
                 const numMessages = this.recentMessages.length;
-                const cutoffStamp = +new Date() - windowMs;
+                const cutoffStamp = nowStamp - windowMs;
 
                 let firstMessageIdx = numMessages;
                 for (let i = 0; i < numMessages; i++) {
@@ -353,11 +355,13 @@ export default class Channel {
                 recentMessagesNow = this.recentMessages;
                 activityNum = recentMessagesNow.length / windowSeconds;
 
-                if (activityNum > 0 && this.canStore) {
-                    this.addSortedActivity(activityNum);
+                if (activityNum > 0) {
+                    if (this.canStore) {
+                        this.addSortedActivity(activityNum);
 
-                    if (this.activityData.sortedActivities.length === storeWithDataSize && this.canSave) {
-                        this.saveHypeData();
+                        if (this.activityData.sortedActivities.length === storeWithDataSize) { // addSortedActivity sole usage must be in scope
+                            this.saveHypeData();
+                        }
                     }
 
                     if (hypeThreshold != null) {
