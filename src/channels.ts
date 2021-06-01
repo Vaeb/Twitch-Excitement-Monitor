@@ -1,8 +1,12 @@
 import axios from 'axios';
+import { HelixUser } from 'twitch';
+import type { EventSubSubscription } from 'twitch-eventsub';
 
-import { authData, channelNames } from './twitchSetup';
+import { authData, channelNames, listener } from './twitchSetup';
 import { PercentileActivity } from './models';
-import { log, formatTime, getDateString, hiddenSpace } from './utils';
+import {
+    log, formatTime, getDateString, hiddenSpace, isChannelLive, getChannel,
+} from './utils';
 
 interface RecentMessage {
     timestamp: number;
@@ -20,6 +24,8 @@ interface Activity {
     hypeStart: number;
 }
 
+const saveAfterUptime = 1000 * 60 * 60;
+const statusChangeRealAfter = 1000 * 60 * 60;
 const windowSeconds = 60; // 30 | Larger = Scenario | Smaller = Moment/Event
 const hypePercent = 0.95; // 0.9
 const intervalFreq = 1000 * 1; // 1
@@ -35,11 +41,21 @@ const rollingAverage = (oldAvg: number, newN: number, newValue: number) => oldAv
 const lerp = (a: number, b: number, f: number) => a + f * (b - a);
 
 export default class Channel {
+    static numChannels = 0;
+
     channelName: string;
 
     channelNumber: number;
 
     channelNamePadded: string;
+
+    helixChannel: HelixUser;
+
+    channelId: string;
+
+    streamLive = true;
+
+    liveStatusChangedStamp = 0;
 
     // private lastMessageLower = '';
 
@@ -55,14 +71,84 @@ export default class Channel {
 
     hypeThreshold: number | null = null;
 
-    constructor(channelName: string, channelNumber: number) {
+    canStore = false;
+
+    canSave = false;
+
+    constructor(channelName: string, channelNumber: number, helixChannel: HelixUser, streamLive: boolean) {
         this.channelName = channelName;
         this.channelNumber = channelNumber;
         this.channelNamePadded = channelName.padEnd(maxChannelNameLen, ' ');
+        this.helixChannel = helixChannel;
+        this.channelId = helixChannel.id;
+        this.streamLive = streamLive;
         if (this.channelName !== 'vaeben') this.monitorHype();
+        log('Setup channel:', this.channelName);
+    }
+
+    public static async createAsync(channelName: string): Promise<Channel | null> {
+        const channelNumber = ++Channel.numChannels;
+
+        const helixChannel = await getChannel(channelName);
+        const streamLive = !!(await isChannelLive(channelName));
+
+        if (helixChannel === null) return null;
+
+        const channel = new Channel(channelName, channelNumber, helixChannel, streamLive);
+        await channel.makeLiveListeners();
+
+        return channel;
+    }
+
+    public async updateHelixChannel(): Promise<HelixUser | null> {
+        const helixChannel = await getChannel(this.channelId, 'id');
+        if (helixChannel === null) return null;
+        this.helixChannel = helixChannel;
+        return helixChannel;
+    }
+
+    public resetMonitorData(): void {
+        this.hypeActive = false;
+        this.activityData.hypeActivities = [];
+        this.activityData.hypeStart = 0;
+        this.activityData.sortedActivities = [];
+        this.recentMessages = [];
+        this.startTick = Infinity;
+        this.canSave = false;
+        this.canStore = false;
+    }
+
+    private liveStatusChanged() {
+        const nowStamp = +new Date();
+        if (nowStamp - this.liveStatusChangedStamp > statusChangeRealAfter) {
+            this.liveStatusChangedStamp = nowStamp;
+            log('Updated liveStatusChangedStamp');
+        }
+    }
+
+    private async makeLiveListeners(): Promise<{ onlineSubscription: EventSubSubscription<any>, offlineSubscription: EventSubSubscription<any> }> {
+        const onlineSubscription = await listener.subscribeToStreamOnlineEvents(this.channelId, (e) => {
+            log(`${e.broadcasterDisplayName} just went live!`);
+            this.resetMonitorData();
+            this.liveStatusChanged();
+            this.streamLive = true;
+        });
+
+        const offlineSubscription = await listener.subscribeToStreamOfflineEvents(this.channelId, (e) => {
+            log(`${e.broadcasterDisplayName} just went offline`);
+            this.streamLive = false;
+            this.liveStatusChanged();
+            this.resetMonitorData();
+        });
+
+        log('Setup live listeners!');
+
+        return { onlineSubscription, offlineSubscription };
     }
 
     public onNewMessage(channelIrc: string, user: string, message: string): void {
+        if (this.streamLive === false) return;
+
         const messageLower = message.toLowerCase().trim();
 
         // this.lastMessageLower = messageLower;
@@ -166,7 +252,7 @@ export default class Channel {
         }
     }
 
-    public async updateHypeThreshold(): Promise<number | null> {
+    public async fetchHypeThreshold(): Promise<number | null> {
         const hypeThresholdDoc = await PercentileActivity.findOne({ percentile: hypePercent });
 
         if (hypeThresholdDoc) {
@@ -180,8 +266,14 @@ export default class Channel {
         return null;
     }
 
-    private async storeHypeData() {
+    private async saveHypeData() {
         log('>>> Storing hype data...');
+
+        const sortedActivities = [...this.activityData.sortedActivities];
+
+        this.streamLive = !!(await isChannelLive(this.channelName));
+
+        if (this.streamLive === false) return;
 
         const keyPercents: number[] = [];
         for (let x = 0; x < 8; x++) keyPercents.push(x / 1e1);
@@ -190,11 +282,9 @@ export default class Channel {
         for (let x = 9990; x <= 9999; x++) keyPercents.push(x / 1e4);
         keyPercents.push(1);
 
-        const { sortedActivities } = this.activityData;
-
         for (const x of keyPercents) {
             const activityThreshold = this.getHypeAtX(x, sortedActivities);
-            console.log(this.channelName, x, activityThreshold); // do moving mean
+            log(this.channelName, x, activityThreshold); // do moving mean
 
             const percentileActivityOld = await PercentileActivity.findOne({ percentile: x });
 
@@ -207,10 +297,12 @@ export default class Channel {
                 percentileActivityOld.activity = activityNew;
                 percentileActivityOld.save()
                     .then(() => {
-                        log('Updated:', { channelName: this.channelName, percentile: x, nOld, nNew, activityOld, activityThreshold, activityNew });
+                        log('Updated:', {
+                            channelName: this.channelName, percentile: x, nOld, nNew, activityOld, activityThreshold, activityNew,
+                        });
                     })
                     .catch((err) => {
-                        console.log('Updating PercentileActivity errored:');
+                        log('Updating PercentileActivity errored:');
                         console.error(err);
                     });
             } else {
@@ -219,7 +311,7 @@ export default class Channel {
                         log('Created:', { channelName: this.channelName, percentile: x, activity: activityThreshold, n: 1 });
                     })
                     .catch((err) => {
-                        console.log('Creating PercentileActivity errored:');
+                        log('Creating PercentileActivity errored:');
                         console.error(err);
                     });
             }
@@ -227,16 +319,19 @@ export default class Channel {
 
         this.activityData.sortedActivities = [];
         this.activityData.updates++;
-        this.updateHypeThreshold();
+        this.fetchHypeThreshold();
     }
 
     private async monitorHype() {
-        let canStart = false;
-
-        await this.updateHypeThreshold();
+        await this.fetchHypeThreshold();
 
         setInterval(() => {
-            if (canStart === false) canStart = +new Date() - this.startTick >= windowMs;
+            if (this.streamLive === false) return;
+
+            if (this.canStore === false) this.canStore = +new Date() - this.startTick >= windowMs;
+
+            if (this.canSave === false) this.canSave = +new Date() - this.liveStatusChangedStamp >= saveAfterUptime;
+
             let activityNum = 0;
             let recentMessagesNow = [];
             const { hypeThreshold } = this;
@@ -258,11 +353,11 @@ export default class Channel {
                 recentMessagesNow = this.recentMessages;
                 activityNum = recentMessagesNow.length / windowSeconds;
 
-                if (activityNum > 0 && canStart) {
+                if (activityNum > 0 && this.canStore) {
                     this.updateActivityData(activityNum);
 
-                    if (this.activityData.sortedActivities.length === storeWithDataSize) {
-                        this.storeHypeData();
+                    if (this.activityData.sortedActivities.length === storeWithDataSize && this.canSave) {
+                        this.saveHypeData();
                     }
 
                     if (hypeThreshold != null) {
@@ -295,8 +390,9 @@ export type ChannelName = (typeof channelNames)[number];
 
 export const channels = {} as { [key in ChannelName]: Channel };
 
-for (let i = 0; i < channelNames.length; i++) {
-    const channelName = channelNames[i];
-    const channel = new Channel(channelName, i + 1);
-    channels[channelName] = channel;
+for (const channelName of channelNames) {
+    const channel = await Channel.createAsync(channelName);
+    if (channel !== null) {
+        channels[channelName] = channel;
+    }
 }

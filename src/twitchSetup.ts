@@ -1,6 +1,9 @@
 import { promises as fs } from 'fs';
-import { RefreshableAuthProvider, StaticAuthProvider } from 'twitch-auth';
+import { ApiClient } from 'twitch';
+import { RefreshableAuthProvider, StaticAuthProvider, ClientCredentialsAuthProvider } from 'twitch-auth';
 import { ChatClient } from 'twitch-chat-client';
+import { EventSubListener } from 'twitch-eventsub';
+import { NgrokAdapter } from 'twitch-eventsub-ngrok';
 
 import { log } from './utilsSetup';
 
@@ -15,13 +18,14 @@ interface AuthData {
     accessToken: string;
     expiryTimestamp: number;
     refreshToken: string;
-    webhook: string; //
+    webhook: string;
+    randomFixedString: string;
 }
 
 const fetchAuth = async (): Promise<AuthData> => JSON.parse(String(await fs.readFile('./src/auth.json', 'utf-8')));
 
 export const authData = await fetchAuth();
-const auth = new RefreshableAuthProvider(
+const authProvider = new RefreshableAuthProvider(
     new StaticAuthProvider(authData.clientId, authData.accessToken),
     {
         clientSecret: authData.clientSecret,
@@ -41,7 +45,18 @@ const auth = new RefreshableAuthProvider(
     }
 );
 
-export const chatClient = new ChatClient(auth, { channels: [...channelNames] });
+const authProvider2 = new ClientCredentialsAuthProvider(authData.clientId, authData.clientSecret);
+
+export const apiClient = new ApiClient({ authProvider });
+
+export const apiClient2 = new ApiClient({ authProvider: authProvider2 });
+
+await apiClient2.helix.eventSub.deleteAllSubscriptions();
+
+export const listener = new EventSubListener(apiClient2, new NgrokAdapter(), authData.randomFixedString);
+await listener.listen();
+
+export const chatClient = new ChatClient(authProvider, { channels: [...channelNames] });
 await chatClient.connect();
 
 log('Twitch client connected!');

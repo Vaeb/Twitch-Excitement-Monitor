@@ -1,6 +1,7 @@
 import util from 'util';
+import type { HelixUser } from 'twitch';
 
-import { chatClient } from './twitchSetup';
+import { apiClient, chatClient } from './twitchSetup';
 import { log } from './utilsSetup';
 
 export * from './utilsSetup';
@@ -60,4 +61,40 @@ export const chat = (channelName: string, ...messages: any[]): Promise<void> => 
 
     log(...messages);
     return chatClient.say(channelName, message);
+};
+
+type LookupType = 'name' | 'id';
+
+export const getChannels = async (lookup: string[], lookupType: LookupType = 'name'): Promise<HelixUser[] | null> => {
+    let user: HelixUser[] | null = null;
+    if (lookupType === 'name') {
+        user = await apiClient.helix.users.getUsersByNames(lookup);
+    } else if (lookupType === 'id') {
+        user = await apiClient.helix.users.getUsersByIds(lookup);
+    }
+    if (!user) return null;
+    return user;
+};
+
+export const getChannel = async (lookup: string, lookupType: LookupType = 'name'): Promise<HelixUser | null> => {
+    let user: HelixUser | null = null;
+    if (lookupType === 'name') {
+        user = await apiClient.helix.users.getUserByName(lookup);
+    } else if (lookupType === 'id') {
+        user = await apiClient.helix.users.getUserById(lookup);
+    }
+    if (!user) return null;
+    return user;
+};
+
+export const getChannelId = async (userName: string): Promise<string | null> => {
+    const user = await getChannel(userName);
+    if (!user) return null;
+    return user.id;
+};
+
+export const isChannelLive = async (userName: string): Promise<boolean | null> => {
+    const user = await apiClient.helix.users.getUserByName(userName);
+    if (!user) return null;
+    return await user.getStream() !== null;
 };

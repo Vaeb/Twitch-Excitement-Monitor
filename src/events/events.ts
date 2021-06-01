@@ -1,8 +1,8 @@
-import { chatClient } from '../twitchSetup';
+import { chatClient, listener } from '../twitchSetup';
 import { channels } from '../channels';
 import type { ChannelName } from '../channels';
 import { commands } from '../commandSetup';
-import { log } from '../utils';
+import { log, getChannelId } from '../utils';
 
 log('| Setting up events...');
 
@@ -15,8 +15,6 @@ chatClient.onMessage((channelIrc, user, message) => {
     const [messageCmd, ...messageArgs] = message.trim().split(/\s+/g);
 
     const command = commands.find(({ cmds }) => cmds[messageCmd]);
-
-    // console.log(command, messageCmd, message);
 
     if (!command) return;
 
