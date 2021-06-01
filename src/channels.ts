@@ -5,7 +5,7 @@ import type { EventSubSubscription } from 'twitch-eventsub';
 import { authData, channelNames, listener } from './twitchSetup';
 import { PercentileActivity } from './models';
 import {
-    log, formatTime, getDateString, hiddenSpace, isChannelLive, getChannel,
+    log, formatTime, getDateString, hiddenSpace, isChannelLive, getChannel, isRoot,
 } from './utils';
 
 interface RecentMessage {
@@ -82,7 +82,7 @@ export default class Channel {
         this.helixChannel = helixChannel;
         this.channelId = helixChannel.id;
         this.streamLive = streamLive;
-        if (this.channelName !== 'vaeben') this.monitorHype();
+        if (!isRoot(this.channelName)) this.monitorHype();
         log('Setup channel:', this.channelName);
     }
 
@@ -157,7 +157,7 @@ export default class Channel {
         if (this.startTick === Infinity) this.startTick = +new Date();
     }
 
-    private updateActivityData(activityNum: number) {
+    private addSortedActivity(activityNum: number) {
         const { n, avg, sortedActivities } = this.activityData;
 
         const newN = n + 1;
@@ -354,7 +354,7 @@ export default class Channel {
                 activityNum = recentMessagesNow.length / windowSeconds;
 
                 if (activityNum > 0 && this.canStore) {
-                    this.updateActivityData(activityNum);
+                    this.addSortedActivity(activityNum);
 
                     if (this.activityData.sortedActivities.length === storeWithDataSize && this.canSave) {
                         this.saveHypeData();

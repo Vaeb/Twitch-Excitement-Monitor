@@ -1,8 +1,8 @@
-import { chatClient, listener } from '../twitchSetup';
+import { chatClient } from '../twitchSetup';
 import { channels } from '../channels';
 import type { ChannelName } from '../channels';
 import { commands } from '../commandSetup';
-import { log, getChannelId } from '../utils';
+import { log, isAdmin } from '../utils';
 
 log('| Setting up events...');
 
@@ -10,7 +10,7 @@ chatClient.onMessage((channelIrc, user, message) => {
     const channelName = channelIrc.substring(1) as ChannelName;
     channels[channelName].onNewMessage(channelIrc, user, message);
 
-    if (!['vaeben', 'morlega'].includes(user)) return;
+    if (!isAdmin(user)) return;
 
     const [messageCmd, ...messageArgs] = message.trim().split(/\s+/g);
 

@@ -98,3 +98,7 @@ export const isChannelLive = async (userName: string): Promise<boolean | null> =
     if (!user) return null;
     return await user.getStream() !== null;
 };
+
+export const isRoot = (channelName: string): boolean => ['vaeben', 'bananaofwild'].includes(channelName);
+
+export const isAdmin = (channelName: string): boolean => ['vaeben', 'bananaofwild', 'morlega'].includes(channelName);

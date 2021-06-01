@@ -1,5 +1,5 @@
 import type { CommandRaw } from '../../commandSetup';
-import { chat } from '../../utils';
+import { chat, isRoot } from '../../utils';
 import { PercentileActivity } from '../../models';
 import { channels } from '../../channels';
 import type { ChannelName } from '../../channels';
@@ -9,7 +9,7 @@ export const command: CommandRaw = {
     desc: "Clear a channel's activity data",
     params: ['channel_name'],
     func: async ({ channelName, user, cmdArgs }) => {
-        if (user !== 'vaeben') return;
+        if (!isRoot(user)) return;
         if (cmdArgs.length < 1) return;
 
         const channelNameUse = cmdArgs[0] as ChannelName;
@@ -20,7 +20,7 @@ export const command: CommandRaw = {
             .then(() => {
                 chat(channelName, 'Cleared activity data.');
                 const channelUse = channels[channelNameUse];
-                channelUse.updateHypeThreshold();
+                channelUse.fetchHypeThreshold();
             })
             .catch((err) => {
                 chat(channelName, 'Clear errored:', err);
