@@ -9,7 +9,7 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
-export const channelNames = ['buddha', 'vaeben', 'bananaofwild'] as const;
+export const channelNames = ['buddha', 'kyle', 'vaeben', 'bananaofwild'] as const;
 
 interface AuthData {
     clientId: string;
@@ -39,7 +39,7 @@ const authProvider = new RefreshableAuthProvider(
                 expiryTimestamp: expiryDate ? expiryDate.getTime() : null,
             };
 
-            log('>>> Refreshing to:', accessToken, refreshToken, expiryDate);
+            log('>>> Refreshing auth-data to:', accessToken, refreshToken, expiryDate);
             await fs.writeFile('./src/auth.json', JSON.stringify(authDataNew, null, 4), 'utf-8');
         },
     }

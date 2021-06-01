@@ -253,7 +253,7 @@ export default class Channel {
     }
 
     public async fetchHypeThreshold(): Promise<number | null> {
-        const hypeThresholdDoc = await PercentileActivity.findOne({ percentile: hypePercent });
+        const hypeThresholdDoc = await PercentileActivity.findOne({ channelName: this.channelName, percentile: hypePercent });
 
         if (hypeThresholdDoc) {
             this.hypeThreshold = hypeThresholdDoc.activity;
@@ -286,7 +286,7 @@ export default class Channel {
             const activityThreshold = this.getHypeAtX(x, sortedActivities);
             log(this.channelName, x, activityThreshold); // do moving mean
 
-            const percentileActivityOld = await PercentileActivity.findOne({ percentile: x });
+            const percentileActivityOld = await PercentileActivity.findOne({ channelName: this.channelName, percentile: x });
 
             if (percentileActivityOld) {
                 const nOld = percentileActivityOld.n;
