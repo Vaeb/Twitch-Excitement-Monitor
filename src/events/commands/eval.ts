@@ -6,10 +6,12 @@ import childProcess from 'child_process';
 import type { CommandRaw } from '../../commandSetup';
 import * as utils from '../../utils';
 import * as twitchSetup from '../../twitchSetup';
+import * as channels from '../../channels';
 
 const { format } = util;
 const { execFile } = childProcess;
 const { log, chat } = utils;
+const { channels: c } = channels;
 
 const execFileAsync = util.promisify(execFile);
 
@@ -23,7 +25,6 @@ export const command: CommandRaw = {
     func: async ({
         channelName, cmdArgs,
     }) => {
-        const channels = await import('../../channels'); // Imported in runtime due to module-cycle
         const commands = await import('../../commandSetup');
         // const db = await dbPromise;
         // const dbClips = db.collection('clips');

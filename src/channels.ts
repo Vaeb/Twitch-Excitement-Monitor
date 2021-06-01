@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { HelixUser } from 'twitch';
+import type { HelixStream, HelixUser } from 'twitch';
 import type { EventSubSubscription } from 'twitch-eventsub';
 
 import { authData, channelNames, listener } from './twitchSetup';
@@ -24,17 +24,22 @@ interface Activity {
     hypeStart: number;
 }
 
-const saveAfterUptime = 1000 * 60 * 60;
+const monitorAfterUptime = 1000 * 60 * 40;
 const statusChangeRealAfter = 1000 * 60 * 60;
 const windowSeconds = 60; // 30 | Larger = Scenario | Smaller = Moment/Event
 const hypePercent = 0.95; // 0.9
-const intervalFreq = 1000 * 1; // 1
+const watchStreamDataInterval = 1000 * 60;
+const monitorInterval = 1000 * 1; // 1
 const windowMs = 1000 * windowSeconds;
 const storeWithDataSize = 1000; // 10000
 
-const maxChannelNameLen = channelNames.reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
+const maxChannelNameLen = channelNames.filter(channelName => !isRoot(channelName)).reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
 
-const formatDecimal = (num: number | null, fractionDigits = 2, maxLength = 5) => num?.toFixed(fractionDigits)?.padStart(maxLength, '0');
+const formatDecimal = (num: number | null, fractionDigits = 2, maxLength = 5) => {
+    if (num == null || (num === Infinity || num === -Infinity)) return 'N/A'.padStart(maxLength, ' ');
+
+    return num.toFixed(fractionDigits)?.padStart(maxLength, '0');
+};
 
 const rollingAverage = (oldAvg: number, newN: number, newValue: number) => oldAvg * ((newN - 1) / newN) + newValue / newN;
 
@@ -51,9 +56,11 @@ export default class Channel {
 
     helixChannel: HelixUser;
 
+    helixStream: HelixStream | null;
+
     channelId: string;
 
-    streamLive = true;
+    streamLive = false;
 
     liveStatusChangedStamp = 0;
 
@@ -64,7 +71,7 @@ export default class Channel {
     recentMessages: RecentMessage[] = [];
 
     activityData: Activity = {
-        n: 0, min: Infinity, avg: 0, peak: 0, sortedActivities: [], updates: 0, hypeActivities: [], hypeStart: 0,
+        n: 0, min: Infinity, avg: -Infinity, peak: -Infinity, sortedActivities: [], updates: 0, hypeActivities: [], hypeStart: 0,
     };
 
     hypeActive = false;
@@ -73,14 +80,19 @@ export default class Channel {
 
     canStore = false;
 
-    constructor(channelName: string, channelNumber: number, helixChannel: HelixUser, streamLive: boolean) {
+    constructor(channelName: string, channelNumber: number, helixChannel: HelixUser, helixStream: HelixStream | null, streamLive: boolean, liveStamp: number) {
         this.channelName = channelName;
         this.channelNumber = channelNumber;
-        this.channelNamePadded = channelName.padEnd(maxChannelNameLen, ' ');
+        this.channelNamePadded = channelName.padStart(maxChannelNameLen, ' ');
         this.helixChannel = helixChannel;
+        this.helixStream = helixStream;
         this.channelId = helixChannel.id;
         this.streamLive = streamLive;
-        if (!isRoot(this.channelName)) this.monitorHype();
+        this.liveStatusChangedStamp = liveStamp;
+        if (!isRoot(this.channelName)) {
+            this.watchStreamData();
+            this.monitorHype();
+        }
         log('Setup channel:', this.channelName);
     }
 
@@ -92,7 +104,14 @@ export default class Channel {
 
         if (helixChannel === null) return null;
 
-        const channel = new Channel(channelName, channelNumber, helixChannel, streamLive);
+        const helixStream = await helixChannel.getStream();
+
+        let liveStamp = 0;
+        if (helixStream) {
+            liveStamp = +helixStream.startDate;
+        }
+
+        const channel = new Channel(channelName, channelNumber, helixChannel, helixStream, streamLive, liveStamp);
         await channel.makeLiveListeners();
 
         return channel;
@@ -105,7 +124,15 @@ export default class Channel {
         return helixChannel;
     }
 
-    public resetMonitorData(): void {
+    public async resetMonitorData(): Promise<void> {
+        this.helixChannel.getStream()
+            .then((helixStream) => {
+                this.helixStream = helixStream;
+            })
+            .catch((err) => {
+                log('Error fetching helixStream in resetMonitorData:');
+                console.error(err);
+            });
         this.hypeActive = false;
         this.activityData.hypeActivities = [];
         this.activityData.hypeStart = 0;
@@ -154,8 +181,29 @@ export default class Channel {
         if (this.startTick === Infinity) this.startTick = +new Date();
     }
 
+    private watchStreamData() {
+        setInterval(() => {
+            this.helixChannel.getStream()
+                .then((helixStream) => {
+                    const oldHelixStream = this.helixStream;
+                    this.helixStream = helixStream;
+                    if (oldHelixStream !== null && this.helixStream === null) {
+                        log('>>> helixStream is now null!');
+                        this.resetMonitorData();
+                    }
+                })
+                .catch((err) => {
+                    log('Error fetching helixStream:');
+                    console.error(err);
+                });
+        }, watchStreamDataInterval);
+    }
+
     private addSortedActivity(activityNum: number) {
-        const { n, avg, sortedActivities } = this.activityData;
+        const { n, sortedActivities } = this.activityData;
+        let { avg } = this.activityData;
+
+        if (avg === -Infinity) avg = 0;
 
         const newN = n + 1;
         this.activityData.n = newN;
@@ -328,13 +376,14 @@ export default class Channel {
         await this.fetchHypeThreshold();
 
         setInterval(() => {
-            if (this.streamLive === false) return;
+            if (this.streamLive === false || this.helixStream === null) return;
 
             const nowStamp = +new Date();
 
-            if (this.canStore === false) this.canStore = nowStamp - this.startTick >= windowMs && nowStamp - this.liveStatusChangedStamp >= saveAfterUptime;
+            if (this.canStore === false) this.canStore = nowStamp - this.startTick >= windowMs && nowStamp - this.liveStatusChangedStamp >= monitorAfterUptime;
 
             let activityNum = 0;
+            let activityNumRaw = 0;
             let recentMessagesNow = [];
             const { hypeThreshold } = this;
 
@@ -353,7 +402,8 @@ export default class Channel {
 
                 this.recentMessages = this.recentMessages.slice(firstMessageIdx);
                 recentMessagesNow = this.recentMessages;
-                activityNum = recentMessagesNow.length / windowSeconds;
+                activityNum = (recentMessagesNow.length * 1e5) / (windowSeconds * this.helixStream.viewers);
+                activityNumRaw = recentMessagesNow.length / windowSeconds;
 
                 if (activityNum > 0) {
                     if (this.canStore) {
@@ -373,18 +423,20 @@ export default class Channel {
             if (activityNum > 0) {
                 log(
                     `Channel${this.channelNumber}:`, this.channelNamePadded,
-                    `| n${this.channelNumber}:`, String(this.activityData.n).padStart(9, '0'),
-                    `| Hype${this.channelNumber}:`, this.hypeActive,
-                    `| Activity${this.channelNumber}:`, formatDecimal(activityNum),
+                    `| Viewers${this.channelNumber}:`, String(this.helixStream.viewers).padStart(6, '0'),
+                    `| SortedArr${this.channelNumber}:`, String(this.activityData.sortedActivities.length).padStart(4, '0'),
+                    `| Updates${this.channelNumber}:`, String(this.activityData.updates).padStart(4, '0'),
+                    `| Hype${this.channelNumber}:`, String(this.hypeActive).padStart(5, ' '),
+                    `| Act-Raw${this.channelNumber}:`, formatDecimal(activityNumRaw),
+                    `| Act${this.channelNumber}:`, formatDecimal(activityNum),
                     `| Hype-Threshold${this.channelNumber}:`, formatDecimal(hypeThreshold),
+                    `| H-T-Curr${this.channelNumber}:`, formatDecimal(this.getHypeAtX(hypePercent, this.activityData.sortedActivities)),
                     `| Min${this.channelNumber}:`, formatDecimal(this.activityData.min),
                     `| Avg${this.channelNumber}:`, formatDecimal(this.activityData.avg),
-                    `| Peak${this.channelNumber}:`, formatDecimal(this.activityData.peak),
-                    `| SortedArr${this.channelNumber}:`, String(this.activityData.sortedActivities.length).padStart(9, '0'),
-                    `| Updates${this.channelNumber}:`, String(this.activityData.updates).padStart(6, '0')
+                    `| Peak${this.channelNumber}:`, formatDecimal(this.activityData.peak)
                 );
             }
-        }, intervalFreq);
+        }, monitorInterval);
     }
 }
 
