@@ -1,5 +1,5 @@
 import util from 'util';
-import type { HelixUser } from 'twitch';
+import type { HelixUser, HelixVideo } from 'twitch';
 
 import { apiClient, chatClient } from './twitchSetup';
 import { log } from './utilsSetup';
@@ -12,7 +12,7 @@ export const round = (num: number, inc: number): number => (inc == 0 ? num : Mat
 
 export const toFixedCut = (num: number, decimals: number): string => Number(num.toFixed(decimals)).toString();
 
-export const formatTime = (time: number): string => {
+export const formatElapsed = (time: number): string => {
     let timeStr;
     let formatStr;
 
@@ -53,6 +53,14 @@ export const formatTime = (time: number): string => {
     if (timeStr !== '1') formatStr += 's';
 
     return formatStr;
+};
+
+export const formatTime = (date: Date, useTwitchSymbols = false): string => {
+    const hours = `0${date.getUTCHours()}`.substr(-2);
+    const minutes = `0${date.getMinutes()}`.substr(-2);
+    const seconds = `0${date.getSeconds()}`.substr(-2);
+    const formattedTime = `${hours}${useTwitchSymbols ? 'h' : ':'}${minutes}${useTwitchSymbols ? 'm' : ':'}${seconds}${useTwitchSymbols ? 's' : ''}`;
+    return formattedTime;
 };
 
 export const chat = (channelName: string, ...messages: any[]): Promise<void> => {
@@ -102,3 +110,9 @@ export const isChannelLive = async (userName: string): Promise<boolean | null> =
 export const isRoot = (channelName: string): boolean => ['vaeben', 'bananaofwild'].includes(channelName);
 
 export const isAdmin = (channelName: string): boolean => ['vaeben', 'bananaofwild', 'morlega'].includes(channelName);
+
+export const getLatestVod = async (userId: string): Promise<HelixVideo | null> => {
+    const vod = (await apiClient.helix.videos.getVideosByUser(userId, { limit: '1', type: 'archive', orderBy: 'time' })).data[0];
+    if (!vod) return null;
+    return vod;
+};

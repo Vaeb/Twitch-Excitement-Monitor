@@ -3,9 +3,9 @@ import type { HelixStream, HelixUser } from 'twitch';
 import type { EventSubSubscription } from 'twitch-eventsub';
 
 import { authData, channelNames, listener } from './twitchSetup';
-import { PercentileActivity } from './models';
+import { ActivityMixed } from './models';
 import {
-    log, formatTime, getDateString, hiddenSpace, isChannelLive, getChannel, isRoot,
+    log, formatElapsed, getDateString, hiddenSpace, isChannelLive, getChannel, isRoot, formatTime, getLatestVod,
 } from './utils';
 
 interface RecentMessage {
@@ -20,14 +20,14 @@ interface Activity {
     peak: number;
     sortedActivities: number[];
     updates: number;
-    hypeActivities: number[];
+    hypeActivities: { activityNum: number, activityNumRaw: number }[];
     hypeStart: number;
 }
 
-const monitorAfterUptime = 1000 * 60 * 40;
+const monitorAfterUptime = 1000 * 60 * 60;
 const statusChangeRealAfter = 1000 * 60 * 60;
 const windowSeconds = 60; // 30 | Larger = Scenario | Smaller = Moment/Event
-const hypePercent = 0.95; // 0.9
+const hypePercentile = 0.95; // 0.9
 const watchStreamDataInterval = 1000 * 60;
 const monitorInterval = 1000 * 1; // 1
 const windowMs = 1000 * windowSeconds;
@@ -35,10 +35,16 @@ const storeWithDataSize = 1000; // 10000
 
 const maxChannelNameLen = channelNames.filter(channelName => !isRoot(channelName)).reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
 
-const formatDecimal = (num: number | null, fractionDigits = 2, maxLength = 5) => {
+const formatDecimal = (num: number | null, separator = ' ', fractionDigits = 2, maxLength = 5) => {
     if (num == null || (num === Infinity || num === -Infinity)) return 'N/A'.padStart(maxLength, ' ');
 
-    return num.toFixed(fractionDigits)?.padStart(maxLength, '0');
+    return num.toFixed(fractionDigits)?.padStart(maxLength, separator);
+};
+
+const formatInt = (num: number | null, separator = ' ', mult = 1, maxLength = 3) => {
+    if (num == null || (num === Infinity || num === -Infinity)) return 'N/A'.padStart(maxLength, ' ');
+
+    return String(Math.round(num * mult)).padStart(maxLength, separator);
 };
 
 const rollingAverage = (oldAvg: number, newN: number, newValue: number) => oldAvg * ((newN - 1) / newN) + newValue / newN;
@@ -233,9 +239,13 @@ export default class Channel {
         }
         // log('insertAt', insertAt);
         sortedActivities.splice(insertAt, 0, activityNum);
+
+        return (insertAt) / (numActivities || 1);
     }
 
     private getHypeAtX(x: number, sortedActivities = this.activityData.sortedActivities) {
+        // if (sortedActivities.length === 0) return null;
+
         const decimalIdx = (sortedActivities.length - 1) * x;
         const smallerHypeIdx = Math.floor(decimalIdx);
         const largerHypeIdx = Math.ceil(decimalIdx);
@@ -248,7 +258,7 @@ export default class Channel {
         return lerp(smallerHype, largerHype, decimalIdx - smallerHypeIdx);
     }
 
-    private checkHype(hypeThreshold: number, activityNum: number, cutoffStamp: number) {
+    public async checkHype(hypeThreshold: number, activityNum: number, activityNumRaw: number, cutoffStamp: number): Promise<void> {
         const { hypeActivities, hypeStart } = this.activityData;
 
         const isHype = activityNum >= hypeThreshold;
@@ -256,6 +266,15 @@ export default class Channel {
             this.hypeActive = true;
             const hypeStartNew = new Date(cutoffStamp);
             this.activityData.hypeStart = +hypeStartNew;
+
+            const vod = await getLatestVod(this.channelId);
+            let vodStampUrl = null;
+
+            if (vod) {
+                const vodTimestamp = formatTime(new Date(+hypeStartNew - +(this.helixStream as HelixStream).startDate), true);
+                vodStampUrl = `${vod.url}?t=${vodTimestamp}`;
+            }
+
             const outStrFields = [
                 `Hype Detected-${this.channelNamePadded}   `,
                 `Time: ${getDateString(hypeStartNew)}`,
@@ -264,7 +283,7 @@ export default class Channel {
             const outStr = outStrFields.join(' | ');
             log(`${hiddenSpace}\n${outStr}`);
             axios.post(authData.webhook, {
-                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\``,
+                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\` ${vodStampUrl ? `URL: ${vodStampUrl}` : ''}`,
             }).catch(err => log(err));
         } else if (this.hypeActive && !isHype) {
             this.hypeActive = false;
@@ -272,17 +291,22 @@ export default class Channel {
             this.activityData.hypeStart = 0;
             let minHype = Infinity;
             let maxHype = -1;
-            const avgHype = hypeActivities.reduce((acc, hype) => {
-                if (hype < minHype) minHype = hype;
-                if (hype > maxHype) maxHype = hype;
-                return acc + hype;
-            }, 0) / hypeActivities.length;
-            const elapsedTimeStr = formatTime(+new Date() - hypeStart);
+            const avgHypeData = hypeActivities.reduce((acc, hype) => {
+                if (hype.activityNum < minHype) minHype = hype.activityNum;
+                if (hype.activityNum > maxHype) maxHype = hype.activityNum;
+                acc.hype += hype.activityNum;
+                acc.hypeRaw += hype.activityNumRaw;
+                return acc;
+            }, { hype: 0, hypeRaw: 0 });
+            const avgHype = avgHypeData.hype / hypeActivities.length;
+            const avgHypeRaw = avgHypeData.hypeRaw / hypeActivities.length;
+            const elapsedTimeStr = formatElapsed(+new Date() - hypeStart);
             const outStrFields = [
                 `......Hype Ended-${this.channelNamePadded}`,
                 `Lasted: ${elapsedTimeStr}`,
                 `Min-Hype: ${formatDecimal(minHype)}`,
                 `Avg-Hype: ${formatDecimal(avgHype)}`,
+                `Avg-Hype-Raw: ${formatDecimal(avgHypeRaw)}`,
                 `Max-Hype: ${formatDecimal(maxHype)}`,
             ];
             const outStr = outStrFields.join(' | ');
@@ -293,21 +317,22 @@ export default class Channel {
         }
 
         if (this.hypeActive) {
-            hypeActivities.push(activityNum);
+            hypeActivities.push({ activityNum, activityNumRaw });
         }
     }
 
     public async fetchHypeThreshold(): Promise<number | null> {
-        const hypeThresholdDoc = await PercentileActivity.findOne({ channelName: this.channelName, percentile: hypePercent });
+        const activityDocs = await ActivityMixed.find({ channelName: this.channelName });
+        const hypeDoc = activityDocs.find(activityDoc => activityDoc.percentile == hypePercentile);
 
-        if (hypeThresholdDoc) {
-            this.hypeThreshold = hypeThresholdDoc.activity;
-            log(`[${this.channelName}] Hype threshold for ${hypePercent} found:`, this.hypeThreshold);
+        if (hypeDoc) {
+            this.hypeThreshold = hypeDoc.activity;
+            log(`[${this.channelName}] Hype threshold for ${hypePercentile} found:`, this.hypeThreshold);
             return this.hypeThreshold;
         }
 
         this.hypeThreshold = null;
-        log(`[${this.channelName}] No hype threshold stored for percentile ${hypePercent}`);
+        log(`[${this.channelName}] No hype threshold stored for percentile ${hypePercentile}`);
         return null;
     }
 
@@ -336,32 +361,32 @@ export default class Channel {
             const activityThreshold = this.getHypeAtX(x, sortedActivities);
             log(this.channelName, x, activityThreshold); // do moving mean
 
-            const percentileActivityOld = await PercentileActivity.findOne({ channelName: this.channelName, percentile: x });
+            const activityMixedOld = await ActivityMixed.findOne({ channelName: this.channelName, percentile: x });
 
-            if (percentileActivityOld) {
-                const nOld = percentileActivityOld.n;
-                const activityOld = percentileActivityOld.activity;
+            if (activityMixedOld) {
+                const nOld = activityMixedOld.n;
+                const activityOld = activityMixedOld.activity;
                 const nNew = nOld + 1;
-                const activityNew = rollingAverage(percentileActivityOld.activity, nNew, activityThreshold);
-                percentileActivityOld.n = nNew;
-                percentileActivityOld.activity = activityNew;
-                percentileActivityOld.save()
+                const activityNew = rollingAverage(activityMixedOld.activity, nNew, activityThreshold);
+                activityMixedOld.n = nNew;
+                activityMixedOld.activity = activityNew;
+                activityMixedOld.save()
                     .then(() => {
                         log('Updated:', {
                             channelName: this.channelName, percentile: x, nOld, nNew, activityOld, activityThreshold, activityNew,
                         });
                     })
                     .catch((err) => {
-                        log('Updating PercentileActivity errored:');
+                        log('Updating ActivityMixed errored:');
                         console.error(err);
                     });
             } else {
-                PercentileActivity.create({ channelName: this.channelName, percentile: x, activity: activityThreshold, n: 1 })
+                ActivityMixed.create({ channelName: this.channelName, percentile: x, activity: activityThreshold, n: 1 })
                     .then(() => {
                         log('Created:', { channelName: this.channelName, percentile: x, activity: activityThreshold, n: 1 });
                     })
                     .catch((err) => {
-                        log('Creating PercentileActivity errored:');
+                        log('Creating ActivityMixed errored:');
                         console.error(err);
                     });
             }
@@ -384,6 +409,7 @@ export default class Channel {
 
             let activityNum = 0;
             let activityNumRaw = 0;
+            let nowHypeX = -Infinity;
             let recentMessagesNow = [];
             const { hypeThreshold } = this;
 
@@ -407,7 +433,7 @@ export default class Channel {
 
                 if (activityNum > 0) {
                     if (this.canStore) {
-                        this.addSortedActivity(activityNum);
+                        nowHypeX = this.addSortedActivity(activityNum);
 
                         if (this.activityData.sortedActivities.length === storeWithDataSize) { // addSortedActivity sole usage must be in scope
                             this.saveHypeData();
@@ -415,26 +441,27 @@ export default class Channel {
                     }
 
                     if (hypeThreshold != null) {
-                        this.checkHype(hypeThreshold, activityNum, cutoffStamp);
+                        this.checkHype(hypeThreshold, activityNum, activityNumRaw, cutoffStamp);
                     }
                 }
             }
 
             if (activityNum > 0) {
-                log(
-                    `Channel${this.channelNumber}:`, this.channelNamePadded,
-                    `| Viewers${this.channelNumber}:`, String(this.helixStream.viewers).padStart(6, '0'),
-                    `| SortedArr${this.channelNumber}:`, String(this.activityData.sortedActivities.length).padStart(4, '0'),
-                    `| Updates${this.channelNumber}:`, String(this.activityData.updates).padStart(4, '0'),
-                    `| Hype${this.channelNumber}:`, String(this.hypeActive).padStart(5, ' '),
-                    `| Act-Raw${this.channelNumber}:`, formatDecimal(activityNumRaw),
-                    `| Act${this.channelNumber}:`, formatDecimal(activityNum),
-                    `| Hype-Threshold${this.channelNumber}:`, formatDecimal(hypeThreshold),
-                    `| H-T-Curr${this.channelNumber}:`, formatDecimal(this.getHypeAtX(hypePercent, this.activityData.sortedActivities)),
-                    `| Min${this.channelNumber}:`, formatDecimal(this.activityData.min),
-                    `| Avg${this.channelNumber}:`, formatDecimal(this.activityData.avg),
-                    `| Peak${this.channelNumber}:`, formatDecimal(this.activityData.peak)
-                );
+                const outStr = [
+                    `Channel${this.channelNumber}: ${this.channelNamePadded}`,
+                    `| Viewers${this.channelNumber}: ${String(this.helixStream.viewers).padStart(6, ' ')}`,
+                    `| SortedArr${this.channelNumber}: ${String(this.activityData.sortedActivities.length).padStart(4, ' ')}`,
+                    `| Updates${this.channelNumber}: ${String(this.activityData.updates).padStart(4, ' ')}`,
+                    `| Hype${this.channelNumber}: ${String(this.hypeActive).padStart(5, ' ')}`,
+                    `| Act-Raw${this.channelNumber}: ${formatDecimal(activityNumRaw)}`,
+                    `| Act${this.channelNumber}: ${formatDecimal(activityNum)}`,
+                    `| Hype-Threshold${this.channelNumber}: ${formatDecimal(hypeThreshold)}`,
+                    `| H-T-Curr${this.channelNumber}: ${formatDecimal(this.getHypeAtX(hypePercentile, this.activityData.sortedActivities))}`,
+                    `| X${this.channelNumber}: ${`${formatInt(nowHypeX, ' ', 100, 3)}%`}`,
+                    `| Avg${this.channelNumber}: ${formatDecimal(this.activityData.avg)}`,
+                    `| Peak${this.channelNumber}: ${formatDecimal(this.activityData.peak)}`,
+                ].join(' ');
+                log(`${outStr}\n${'-'.repeat(Math.floor(outStr.length * 1.12))}`);
             }
         }, monitorInterval);
     }

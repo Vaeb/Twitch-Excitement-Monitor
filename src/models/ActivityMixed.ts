@@ -2,18 +2,18 @@ import mongoose from 'mongoose';
 
 const { Schema, model } = mongoose;
 
-const PercentileActivitySchema = new Schema({
+const ActivityMixedSchema = new Schema({
     channelName: { type: String, required: true },
     percentile: { type: Number, required: true },
     activity: { type: Number, required: true },
     n: { type: Number, required: true },
 });
 
-export interface IPercentileActivity {
+export interface IActivityMixed {
     channelName: string;
     percentile: number;
     activity: number;
     n: number;
 }
 
-export const PercentileActivity = model<IPercentileActivity>('PercentileActivity', PercentileActivitySchema);
+export const ActivityMixed = model<IActivityMixed>('ActivityMixed', ActivityMixedSchema, 'activitymixed');

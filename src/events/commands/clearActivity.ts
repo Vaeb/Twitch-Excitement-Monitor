@@ -1,6 +1,6 @@
 import type { CommandRaw } from '../../commandSetup';
 import { chat, isRoot } from '../../utils';
-import { PercentileActivity } from '../../models';
+import { ActivityMixed } from '../../models';
 import { channels } from '../../channels';
 import type { ChannelName } from '../../channels';
 
@@ -16,7 +16,7 @@ export const command: CommandRaw = {
 
         chat(channelName, `Clearing all activity data for channel ${channelNameUse}...`);
 
-        PercentileActivity.deleteMany({ channelName: channelNameUse })
+        ActivityMixed.deleteMany({ channelName: channelNameUse })
             .then(() => {
                 chat(channelName, 'Cleared activity data.');
                 const channelUse = channels[channelNameUse];

@@ -7,4 +7,4 @@ await connect('mongodb://localhost:27017/hype', {
     useUnifiedTopology: true,
 });
 
-export * from './PercentileActivity';
+export * from './ActivityMixed';
