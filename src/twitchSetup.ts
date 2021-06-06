@@ -9,7 +9,7 @@ import { log } from './utilsSetup';
 
 log('| Setting up twitch client...');
 
-export const channelNames = ['buddha', 'kyle', 'vaeben', 'bananaofwild'] as const;
+export const channelNames = ['buddha', 'ratedepicz', 'kyle', 'vaeben', 'bananaofwild'] as const;
 
 interface AuthData {
     clientId: string;

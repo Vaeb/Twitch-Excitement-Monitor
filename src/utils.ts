@@ -12,6 +12,8 @@ export const round = (num: number, inc: number): number => (inc == 0 ? num : Mat
 
 export const toFixedCut = (num: number, decimals: number): string => Number(num.toFixed(decimals)).toString();
 
+export const fixDate = (date: Date): Date => new Date(+date + (date.getHours() - date.getUTCHours()) * 1000 * 60 * 60);
+
 export const formatElapsed = (time: number): string => {
     let timeStr;
     let formatStr;
@@ -116,3 +118,5 @@ export const getLatestVod = async (userId: string): Promise<HelixVideo | null> =
     if (!vod) return null;
     return vod;
 };
+
+export const getNumPosition = (num: number, min: number, max: number): number => Math.min(Math.max((num - min) / (max - min), 0), 1);

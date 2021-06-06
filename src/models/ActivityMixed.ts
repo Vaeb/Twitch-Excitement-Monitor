@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import type { Document } from 'mongoose';
 
 const { Schema, model } = mongoose;
 
@@ -15,5 +16,7 @@ export interface IActivityMixed {
     activity: number;
     n: number;
 }
+
+export type IActivityMixedDoc = IActivityMixed & Document<any, any>;
 
 export const ActivityMixed = model<IActivityMixed>('ActivityMixed', ActivityMixedSchema, 'activitymixed');

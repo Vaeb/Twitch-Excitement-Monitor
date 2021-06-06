@@ -3,9 +3,9 @@ import type { HelixStream, HelixUser } from 'twitch';
 import type { EventSubSubscription } from 'twitch-eventsub';
 
 import { authData, channelNames, listener } from './twitchSetup';
-import { ActivityMixed } from './models';
+import { ActivityMixed, IActivityMixedDoc } from './models';
 import {
-    log, formatElapsed, getDateString, hiddenSpace, isChannelLive, getChannel, isRoot, formatTime, getLatestVod,
+    log, formatElapsed, getDateString, hiddenSpace, isChannelLive, getChannel, isRoot, formatTime, getLatestVod, getNumPosition,
 } from './utils';
 
 interface RecentMessage {
@@ -20,7 +20,7 @@ interface Activity {
     peak: number;
     sortedActivities: number[];
     updates: number;
-    hypeActivities: { activityNum: number, activityNumRaw: number }[];
+    hypeActivities: { activityNum: number; activityNumRaw: number }[];
     hypeStart: number;
 }
 
@@ -33,16 +33,18 @@ const monitorInterval = 1000 * 1; // 1
 const windowMs = 1000 * windowSeconds;
 const storeWithDataSize = 1000; // 10000
 
-const maxChannelNameLen = channelNames.filter(channelName => !isRoot(channelName)).reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
+const maxChannelNameLen = channelNames
+    .filter(channelName => !isRoot(channelName))
+    .reduce((acc, channelName) => Math.max(acc, channelName.length), 0);
 
-const formatDecimal = (num: number | null, separator = ' ', fractionDigits = 2, maxLength = 5) => {
-    if (num == null || (num === Infinity || num === -Infinity)) return 'N/A'.padStart(maxLength, ' ');
+const formatDecimal = (num: number | null, maxLength = 5, separator = ' ', fractionDigits = 2) => {
+    if (num == null || num === Infinity || num === -Infinity) return 'N/A'.padStart(maxLength, ' ');
 
     return num.toFixed(fractionDigits)?.padStart(maxLength, separator);
 };
 
-const formatInt = (num: number | null, separator = ' ', mult = 1, maxLength = 3) => {
-    if (num == null || (num === Infinity || num === -Infinity)) return 'N/A'.padStart(maxLength, ' ');
+const formatInt = (num: number | null, maxLength = 3, separator = ' ', mult = 1) => {
+    if (num == null || num === Infinity || num === -Infinity) return 'N/A'.padStart(maxLength, ' ');
 
     return String(Math.round(num * mult)).padStart(maxLength, separator);
 };
@@ -76,8 +78,17 @@ export default class Channel {
 
     recentMessages: RecentMessage[] = [];
 
+    activityValues: IActivityMixedDoc[] = [];
+
     activityData: Activity = {
-        n: 0, min: Infinity, avg: -Infinity, peak: -Infinity, sortedActivities: [], updates: 0, hypeActivities: [], hypeStart: 0,
+        n: 0,
+        min: Infinity,
+        avg: -Infinity,
+        peak: -Infinity,
+        sortedActivities: [],
+        updates: 0,
+        hypeActivities: [],
+        hypeStart: 0,
     };
 
     hypeActive = false;
@@ -86,7 +97,14 @@ export default class Channel {
 
     canStore = false;
 
-    constructor(channelName: string, channelNumber: number, helixChannel: HelixUser, helixStream: HelixStream | null, streamLive: boolean, liveStamp: number) {
+    constructor(
+        channelName: string,
+        channelNumber: number,
+        helixChannel: HelixUser,
+        helixStream: HelixStream | null,
+        streamLive: boolean,
+        liveStamp: number
+    ) {
         this.channelName = channelName;
         this.channelNumber = channelNumber;
         this.channelNamePadded = channelName.padStart(maxChannelNameLen, ' ');
@@ -131,7 +149,8 @@ export default class Channel {
     }
 
     public async resetMonitorData(): Promise<void> {
-        this.helixChannel.getStream()
+        this.helixChannel
+            .getStream()
             .then((helixStream) => {
                 this.helixStream = helixStream;
             })
@@ -156,7 +175,10 @@ export default class Channel {
         }
     }
 
-    private async makeLiveListeners(): Promise<{ onlineSubscription: EventSubSubscription<any>, offlineSubscription: EventSubSubscription<any> }> {
+    private async makeLiveListeners(): Promise<{
+        onlineSubscription: EventSubSubscription<any>;
+        offlineSubscription: EventSubSubscription<any>;
+    }> {
         const onlineSubscription = await listener.subscribeToStreamOnlineEvents(this.channelId, (e) => {
             log(`${e.broadcasterDisplayName} just went live!`);
             this.resetMonitorData();
@@ -189,7 +211,8 @@ export default class Channel {
 
     private watchStreamData() {
         setInterval(() => {
-            this.helixChannel.getStream()
+            this.helixChannel
+                .getStream()
                 .then((helixStream) => {
                     const oldHelixStream = this.helixStream;
                     this.helixStream = helixStream;
@@ -240,7 +263,7 @@ export default class Channel {
         // log('insertAt', insertAt);
         sortedActivities.splice(insertAt, 0, activityNum);
 
-        return (insertAt) / (numActivities || 1);
+        // return insertAt / (numActivities || 1);
     }
 
     private getHypeAtX(x: number, sortedActivities = this.activityData.sortedActivities) {
@@ -271,7 +294,7 @@ export default class Channel {
             let vodStampUrl = null;
 
             if (vod) {
-                const vodTimestamp = formatTime(new Date(+hypeStartNew - +(this.helixStream as HelixStream).startDate), true);
+                const vodTimestamp = formatTime(new Date((+hypeStartNew - 1000 * 16) - +(this.helixStream as HelixStream).startDate), true);
                 vodStampUrl = `${vod.url}?t=${vodTimestamp}`;
             }
 
@@ -282,22 +305,27 @@ export default class Channel {
             ];
             const outStr = outStrFields.join(' | ');
             log(`${hiddenSpace}\n${outStr}`);
-            axios.post(authData.webhook, {
-                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\` ${vodStampUrl ? `URL: ${vodStampUrl}` : ''}`,
-            }).catch(err => log(err));
+            axios
+                .post(authData.webhook, {
+                    content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\` ${vodStampUrl ? `URL: ${vodStampUrl}` : ''}`,
+                })
+                .catch(err => log(err));
         } else if (this.hypeActive && !isHype) {
             this.hypeActive = false;
             this.activityData.hypeActivities = [];
             this.activityData.hypeStart = 0;
             let minHype = Infinity;
             let maxHype = -1;
-            const avgHypeData = hypeActivities.reduce((acc, hype) => {
-                if (hype.activityNum < minHype) minHype = hype.activityNum;
-                if (hype.activityNum > maxHype) maxHype = hype.activityNum;
-                acc.hype += hype.activityNum;
-                acc.hypeRaw += hype.activityNumRaw;
-                return acc;
-            }, { hype: 0, hypeRaw: 0 });
+            const avgHypeData = hypeActivities.reduce(
+                (acc, hype) => {
+                    if (hype.activityNum < minHype) minHype = hype.activityNum;
+                    if (hype.activityNum > maxHype) maxHype = hype.activityNum;
+                    acc.hype += hype.activityNum;
+                    acc.hypeRaw += hype.activityNumRaw;
+                    return acc;
+                },
+                { hype: 0, hypeRaw: 0 }
+            );
             const avgHype = avgHypeData.hype / hypeActivities.length;
             const avgHypeRaw = avgHypeData.hypeRaw / hypeActivities.length;
             const elapsedTimeStr = formatElapsed(+new Date() - hypeStart);
@@ -311,9 +339,11 @@ export default class Channel {
             ];
             const outStr = outStrFields.join(' | ');
             log(`${hiddenSpace}\n${outStr}`);
-            axios.post(authData.webhook, {
-                content: `<@107593015014486016>\n\`\`\`${outStr}\`\`\``,
-            }).catch(err => log(err));
+            axios
+                .post(authData.webhook, {
+                    content: `\`\`\`${outStr}\`\`\``,
+                })
+                .catch(err => log(err));
         }
 
         if (this.hypeActive) {
@@ -321,14 +351,18 @@ export default class Channel {
         }
     }
 
-    public async fetchHypeThreshold(): Promise<number | null> {
-        const activityDocs = await ActivityMixed.find({ channelName: this.channelName });
+    public async fetchHypeThreshold(): Promise<{
+        hypePercentile: number;
+        hypeThreshold: number;
+        activityDocs: IActivityMixedDoc[];
+    } | null> {
+        const activityDocs = await ActivityMixed.find({ channelName: this.channelName }).sort({ percentile: 1 });
         const hypeDoc = activityDocs.find(activityDoc => activityDoc.percentile == hypePercentile);
 
         if (hypeDoc) {
             this.hypeThreshold = hypeDoc.activity;
             log(`[${this.channelName}] Hype threshold for ${hypePercentile} found:`, this.hypeThreshold);
-            return this.hypeThreshold;
+            return { hypePercentile, hypeThreshold: this.hypeThreshold, activityDocs };
         }
 
         this.hypeThreshold = null;
@@ -370,10 +404,17 @@ export default class Channel {
                 const activityNew = rollingAverage(activityMixedOld.activity, nNew, activityThreshold);
                 activityMixedOld.n = nNew;
                 activityMixedOld.activity = activityNew;
-                activityMixedOld.save()
+                activityMixedOld
+                    .save()
                     .then(() => {
                         log('Updated:', {
-                            channelName: this.channelName, percentile: x, nOld, nNew, activityOld, activityThreshold, activityNew,
+                            channelName: this.channelName,
+                            percentile: x,
+                            nOld,
+                            nNew,
+                            activityOld,
+                            activityThreshold,
+                            activityNew,
                         });
                     })
                     .catch((err) => {
@@ -394,16 +435,21 @@ export default class Channel {
 
         this.activityData.sortedActivities = [];
         this.activityData.updates++;
-        this.fetchHypeThreshold();
+        this.fetchHypeThreshold().then((result) => {
+            if (result == null) return;
+            this.activityValues = result.activityDocs;
+        });
     }
 
     private async monitorHype() {
-        await this.fetchHypeThreshold();
+        const thresholdData = await this.fetchHypeThreshold();
+        if (thresholdData) this.activityValues = thresholdData.activityDocs;
 
         setInterval(() => {
-            if (this.streamLive === false || this.helixStream === null) return;
+            if (this.streamLive === false || this.helixStream === null || this.helixStream.viewers === 0) return;
 
             const nowStamp = +new Date();
+            const numViewers = this.helixStream.viewers;
 
             if (this.canStore === false) this.canStore = nowStamp - this.startTick >= windowMs && nowStamp - this.liveStatusChangedStamp >= monitorAfterUptime;
 
@@ -411,7 +457,7 @@ export default class Channel {
             let activityNumRaw = 0;
             let nowHypeX = -Infinity;
             let recentMessagesNow = [];
-            const { hypeThreshold } = this;
+            const { hypeThreshold, activityValues } = this;
 
             if (this.recentMessages.length > 0) {
                 // const messagePointerNow = ++messagePointer;
@@ -420,7 +466,8 @@ export default class Channel {
 
                 let firstMessageIdx = numMessages;
                 for (let i = 0; i < numMessages; i++) {
-                    if (this.recentMessages[i].timestamp >= cutoffStamp) { // Include if message is on cutoff time
+                    if (this.recentMessages[i].timestamp >= cutoffStamp) {
+                        // Include if message is on cutoff time
                         firstMessageIdx = i;
                         break;
                     }
@@ -428,14 +475,33 @@ export default class Channel {
 
                 this.recentMessages = this.recentMessages.slice(firstMessageIdx);
                 recentMessagesNow = this.recentMessages;
-                activityNum = (recentMessagesNow.length * 1e5) / (windowSeconds * this.helixStream.viewers);
+                activityNum = (recentMessagesNow.length * 1e5) / (windowSeconds * numViewers);
                 activityNumRaw = recentMessagesNow.length / windowSeconds;
+
+                let higherIndex = activityValues.length;
+                for (let i = 0; i < activityValues.length; i++) {
+                    if (activityNum <= activityValues[i].activity) {
+                        higherIndex = i;
+                        break;
+                    }
+                }
+
+                if (higherIndex === 0) {
+                    nowHypeX = 0;
+                } else if (higherIndex === activityValues.length) {
+                    nowHypeX = 1;
+                } else {
+                    const lowerActivity = activityValues[higherIndex - 1];
+                    const higherActivity = activityValues[higherIndex];
+                    nowHypeX = lerp(lowerActivity.percentile, higherActivity.percentile, getNumPosition(activityNum, lowerActivity.activity, higherActivity.activity));
+                }
 
                 if (activityNum > 0) {
                     if (this.canStore) {
-                        nowHypeX = this.addSortedActivity(activityNum);
+                        this.addSortedActivity(activityNum);
 
-                        if (this.activityData.sortedActivities.length === storeWithDataSize) { // addSortedActivity sole usage must be in scope
+                        if (this.activityData.sortedActivities.length === storeWithDataSize) {
+                            // addSortedActivity sole usage must be in scope
                             this.saveHypeData();
                         }
                     }
@@ -449,15 +515,17 @@ export default class Channel {
             if (activityNum > 0) {
                 const outStr = [
                     `Channel${this.channelNumber}: ${this.channelNamePadded}`,
-                    `| Viewers${this.channelNumber}: ${String(this.helixStream.viewers).padStart(6, ' ')}`,
+                    `| Viewers${this.channelNumber}: ${String(numViewers).padStart(6, ' ')}`,
                     `| SortedArr${this.channelNumber}: ${String(this.activityData.sortedActivities.length).padStart(4, ' ')}`,
                     `| Updates${this.channelNumber}: ${String(this.activityData.updates).padStart(4, ' ')}`,
                     `| Hype${this.channelNumber}: ${String(this.hypeActive).padStart(5, ' ')}`,
                     `| Act-Raw${this.channelNumber}: ${formatDecimal(activityNumRaw)}`,
-                    `| Act${this.channelNumber}: ${formatDecimal(activityNum)}`,
+                    `| Act${this.channelNumber}: ${formatDecimal(activityNum, 6)}`,
                     `| Hype-Threshold${this.channelNumber}: ${formatDecimal(hypeThreshold)}`,
-                    `| H-T-Curr${this.channelNumber}: ${formatDecimal(this.getHypeAtX(hypePercentile, this.activityData.sortedActivities))}`,
-                    `| X${this.channelNumber}: ${`${formatInt(nowHypeX, ' ', 100, 3)}%`}`,
+                    `| H-T-Curr${this.channelNumber}: ${formatDecimal(
+                        this.getHypeAtX(hypePercentile, this.activityData.sortedActivities)
+                    )}`,
+                    `| X${this.channelNumber}: ${`${formatInt(nowHypeX, 3, ' ', 100)}%`}`,
                     `| Avg${this.channelNumber}: ${formatDecimal(this.activityData.avg)}`,
                     `| Peak${this.channelNumber}: ${formatDecimal(this.activityData.peak)}`,
                 ].join(' ');
@@ -469,7 +537,7 @@ export default class Channel {
 
 export { channelNames } from './twitchSetup';
 
-export type ChannelName = (typeof channelNames)[number];
+export type ChannelName = typeof channelNames[number];
 
 export const channels = {} as { [key in ChannelName]: Channel };
 

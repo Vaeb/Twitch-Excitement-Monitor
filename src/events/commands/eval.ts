@@ -11,11 +11,11 @@ import * as channels from '../../channels';
 const { format } = util;
 const { execFile } = childProcess;
 const { log, chat } = utils;
+const { apiClient, apiClient2, channelNames, chatClient } = twitchSetup;
 const { channels: c } = channels;
+const a = apiClient;
 
 const execFileAsync = util.promisify(execFile);
-
-twitchSetup;
 
 export const command: CommandRaw = {
     cmds: ['eval'],
