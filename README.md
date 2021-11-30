@@ -1,2 +1,2 @@
-# Twitch-Hype-Monitor
-Monitor twitch chat to detect the most exciting moments of a stream.
+# Twitch-Excitement-Monitor
+Monitor twitch chat to analyze the moments in a stream when viewers are the most excited.
